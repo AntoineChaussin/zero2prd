@@ -15,7 +15,20 @@ http = "0.2.9"
 hyper = {version = "0.14.26", features=["full"]}
 tokio = {version = "1.27.0", features=["full"]}
 tower = "0.4.13"
+serde = { version = "1.0", features = ["derive"]}
+config = "0.13"
 
+[dependencies.sqlx]
+version = "0.6"
+default-features = false
+features = [
+    "runtime-tokio-rustls",
+    "macros",
+    "postgres",
+    "uuid",
+    "chrono",
+    "migrate"
+]
 
 [dev-dependencies]
 reqwest = "0.11"
