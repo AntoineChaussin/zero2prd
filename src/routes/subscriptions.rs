@@ -1,13 +1,32 @@
-use axum::extract::rejection::FormRejection;
-use axum::extract::Form;
+use axum::extract::{Form, State};
 use http::StatusCode;
+use sqlx::PgPool;
+
+use chrono::Utc;
+use uuid::Uuid;
 
 pub async fn subscription(
-    form: Result<Form<FormData>, FormRejection>,
+    State(connection): State<PgPool>,
+    form: Form<FormData>,
 ) -> Result<StatusCode, StatusCode> {
-    match form {
+    let q_res = sqlx::query!(
+        r#"
+        INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES ($1,$2,$3,$4)
+        "#,
+        Uuid::new_v4(),
+        form.email,
+        form.name,
+        Utc::now()
+    )
+    .execute(&connection)
+    .await;
+
+    match q_res {
         Ok(_) => Ok(StatusCode::OK),
-        Err(_) => Err(StatusCode::BAD_REQUEST),
+        Err(e) => {
+            println!("Failed to execute query: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 
