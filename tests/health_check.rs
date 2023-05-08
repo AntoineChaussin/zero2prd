@@ -1,7 +1,9 @@
 use std::net::{SocketAddr, TcpListener};
 
+use once_cell::sync::Lazy;
+use secrecy::ExposeSecret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
-use zero2prd::configuration::get_config;
+use zero2prd::{configuration::get_config, startup};
 
 #[tokio::test]
 async fn health_check_works() {
@@ -73,7 +75,16 @@ async fn subscribe_returns_a_400_for_invalid_form_data() {
         )
     }
 }
+static TRACING: Lazy<()> = Lazy::new(|| {
+    if std::env::var("TEST_LOG").is_ok() {
+        startup::setup_log("zero2prd".into(), "debug".into(), std::io::stdout);
+    } else {
+        startup::setup_log("zero2prd".into(), "debug".into(), std::io::sink);
+    };
+});
+
 async fn spawn_app() -> TestApp {
+    Lazy::force(&TRACING);
     let listner = TcpListener::bind("127.0.0.1:0".parse::<SocketAddr>().unwrap()).unwrap();
 
     let db_pool = setup_db().await;
@@ -92,18 +103,23 @@ async fn setup_db() -> PgPool {
     let mut configuration = get_config().expect("Failed to get config");
     configuration.database.db_name = uuid::Uuid::new_v4().to_string();
 
-    let mut connection =
-        PgConnection::connect(&configuration.database.connection_string_no_dbname())
-            .await
-            .expect("Failed to connect to postgres");
+    let mut connection = PgConnection::connect(
+        &configuration
+            .database
+            .connection_string_no_dbname()
+            .expose_secret(),
+    )
+    .await
+    .expect("Failed to connect to postgres");
     connection
         .execute(format!(r#"CREATE DATABASE "{}";"#, &configuration.database.db_name).as_str())
         .await
         .expect("Failed to create db");
 
-    let connection_pool = PgPool::connect(&configuration.database.connection_string())
-        .await
-        .expect("Could not connect to postgres");
+    let connection_pool =
+        PgPool::connect(&configuration.database.connection_string().expose_secret())
+            .await
+            .expect("Could not connect to postgres");
 
     sqlx::migrate!("./migrations")
         .run(&connection_pool)
